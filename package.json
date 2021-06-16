@@ -1,0 +1,35 @@
+{
+  "name": "vscode-catkin-tools-api",
+  "description": "API for the catkin_tools VS Code extensions",
+  "version": "1.0.0",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/betwo/vscode-catkin-tools-api.git"
+  },
+  "files": [
+    "out",
+    "README.md",
+    "LICENSE"
+  ],
+  "main": "out/index.js",
+  "types": "out/index.d.ts",
+  "engines": {
+    "vscode": "^1.30.0"
+  },
+  "scripts": {
+    "compile": "tsc -p ./"
+  },
+  "dependencies": {
+    "vscode": "^1.1.37"
+  },
+  "devDependencies": {
+    "@types/vscode": "~1.57.0",
+    "typescript": "^3.9.9"
+  },
+  "bugs": {
+    "url": "https://github.com/betwo/vscode-catkin-tools-api/issues"
+  },
+  "homepage": "https://github.com/betwo/vscode-catkin-tools-api#readme",
+  "author": "betwo"
+}
