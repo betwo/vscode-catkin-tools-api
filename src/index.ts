@@ -6,6 +6,8 @@ import { TestSuiteInfo, TestInfo } from 'vscode-test-adapter-api';
 export const vscodeCatkinToolsExtensionId = 'betwo.catkin-tools';
 
 export interface API {
+    reload(): Promise<void>;
+
     registerWorkspace(context: vscode.ExtensionContext,
         root: vscode.WorkspaceFolder,
         output_channel: vscode.OutputChannel): Promise<void>;
@@ -15,6 +17,9 @@ export interface API {
     getWorkspace(workspace_folder: vscode.WorkspaceFolder): IWorkspace;
     getWorkspaceManager(): IWorkspaceManager;
     getWorkspaces(): Map<vscode.WorkspaceFolder, IWorkspace>;
+
+    registerTestParser(parser: ITestParser): vscode.Disposable;
+    unregisterTestParser(parser: ITestParser): void;
 }
 
 export interface IWorkspace {
@@ -172,4 +177,145 @@ export class WorkspaceTestSuite extends WorkspaceTestInterface {
     public info: TestSuiteInfo | TestInfo;
 
     public test_build_targets: IBuildTarget[];
+}
+
+
+export class TestFixture {
+    constructor(
+        public name: string,
+        public line: number,
+        public test_cases: TestCase[] = [],
+    ) { }
+
+    public getTestCase(name: string): TestCase {
+        for (const test_case of this.test_cases) {
+            if (test_case.name === name) {
+                return test_case;
+            }
+        }
+    }
+}
+
+export class TestCase {
+    constructor(
+        public name: string,
+        public line: number,
+    ) { }
+}
+
+export class TestSource {
+    constructor(
+        public package_relative_file_path: fs.PathLike,
+        public test_fixtures: TestFixture[] = [],
+    ) { }
+
+    public getFixture(name: string): TestFixture {
+        for (const test_fixture of this.test_fixtures) {
+            if (test_fixture.name === name) {
+                return test_fixture;
+            }
+        }
+    }
+
+    public getFixtures(): TestFixture[] {
+        return this.test_fixtures;
+    }
+
+    public getTestCase(fixture_name: string, test_case_name: string): [TestCase, TestFixture] {
+        for (const test_fixture of this.test_fixtures) {
+            if (test_fixture.name === fixture_name) {
+                return [test_fixture.getTestCase(test_case_name), test_fixture];
+            }
+        }
+
+        return [undefined, undefined];
+    }
+}
+
+export class TestSuite {
+    constructor(
+        public targets: TestBuildTarget[],
+    ) { }
+
+    public getBuildTarget(name: string): TestBuildTarget {
+        for (const gtest_build_target of this.targets) {
+            if (gtest_build_target.name === name) {
+                return gtest_build_target;
+            }
+        }
+
+    }
+
+    public getFixture(name: string): [TestFixture, TestSource, TestBuildTarget] {
+        for (const gtest_build_target of this.targets) {
+            const [fixture, test_source] = gtest_build_target.getFixture(name);
+            if (fixture) {
+                return [fixture, test_source, gtest_build_target];
+            }
+        }
+
+        return [undefined, undefined, undefined];
+    }
+
+    public getFixtures(): TestFixture[] {
+        let fixtures = [];
+        for (const gtest_build_target of this.targets) {
+            fixtures = fixtures.concat(gtest_build_target.getFixtures());
+        }
+        return fixtures;
+    }
+
+    public getTestCase(fixture_name: string, test_case_name: string): [TestCase, TestFixture, TestSource, TestBuildTarget] {
+        for (const gtest_build_target of this.targets) {
+            const [test_case, fixture, test_source] = gtest_build_target.getTestCase(fixture_name, test_case_name);
+            if (test_case) {
+                return [test_case, fixture, test_source, gtest_build_target];
+            }
+        }
+
+        return [undefined, undefined, undefined, undefined];
+    }
+}
+export class TestBuildTarget {
+    constructor(
+        public name: string,
+        public package_relative_file_path: fs.PathLike,
+        public line: number,
+        public test_sources: TestSource[] = [],
+    ) { }
+
+    public getFixture(name: string): [TestFixture, TestSource] {
+        for (const test_source of this.test_sources) {
+            const fixture = test_source.getFixture(name);
+            if (fixture) {
+                return [fixture, test_source];
+            }
+        }
+
+        return [undefined, undefined];
+    }
+
+    public getFixtures(): TestFixture[] {
+        let fixtures = [];
+        for (const test_source of this.test_sources) {
+            fixtures = fixtures.concat(test_source.getFixtures());
+        }
+        return fixtures;
+    }
+
+    public getTestCase(fixture_name: string, test_case_name: string): [TestCase, TestFixture, TestSource] {
+        for (const test_source of this.test_sources) {
+            const [test_case, fixture] = test_source.getTestCase(fixture_name, test_case_name);
+            if (test_case) {
+                return [test_case, fixture, test_source];
+            }
+        }
+
+        return [undefined, undefined, undefined];
+    }
+}
+
+export interface ITestParser {
+    matches(json_object: any): boolean;
+    analyzeSourceFile(source_file: fs.PathLike): Promise<TestFixture[]>;
 }
