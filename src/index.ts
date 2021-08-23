@@ -28,9 +28,20 @@ export interface IWorkspace {
 
     workspace_provider: WorkspaceProvider;
 
+    packages: Map<string, IPackage>;
+
+
+    onWorkspaceInitialized: vscode.EventEmitter<boolean>;
+    onTestsSetChanged: vscode.EventEmitter<boolean>;
+
     isInitialized(): boolean;
     reload(): Promise<IWorkspace>;
     loadPackage(package_xml: fs.PathLike): void;
+    loadPackageTests(workspace_package: IPackage,
+        outline_only: boolean,
+        build_dir?: String,
+        devel_dir?: String):
+        Promise<WorkspaceTestSuite>
     locatePackageXML(package_name: String): void;
     buildDependencyGraph(): void;
     iteratePossibleSourceFiles(
@@ -54,9 +65,35 @@ export interface IWorkspace {
     getName(): Promise<string>;
     getSetupShell(): Promise<string>;
     makeCommand(payload: string): Promise<string>;
+
+    runTest(id: string): Promise<TestRunResult>;
 }
 
 export type TestType = "unknown" | "gtest" | "generic" | "suite";
+
+export class TestRunReloadRequest {
+    test: WorkspaceTestSuite;
+    dom?;
+    output?: string;
+}
+export class TestRunResult {
+    constructor(public success: boolean,
+        public repeat_ids?: string[],
+        public reload_packages?: TestRunReloadRequest[]
+    ) {
+        if (this.repeat_ids === undefined) {
+            this.repeat_ids = [];
+        }
+        if (this.reload_packages === undefined) {
+            this.reload_packages = [];
+        }
+    }
+
+    public merge(other: TestRunResult) {
+        this.repeat_ids = this.repeat_ids.concat(other.repeat_ids);
+        this.reload_packages = this.reload_packages.concat(other.reload_packages);
+    }
+}
 
 export interface IPackage {
     package_xml_path: fs.PathLike;
@@ -128,6 +165,8 @@ export interface WorkspaceProvider {
     switchProfile(profile: string): Promise<boolean>;
 
     getBuildTask(): Promise<vscode.Task>;
+    getBuildTestsTask(): Promise<vscode.Task>;
+    getCleanTask(): Promise<vscode.Task>;
 
     reload(): any;
     enableCompileCommandsGeneration(): any;
