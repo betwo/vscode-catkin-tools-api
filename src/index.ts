@@ -5,6 +5,8 @@ import { TestSuiteInfo, TestInfo } from 'vscode-test-adapter-api';
 
 export const vscodeCatkinToolsExtensionId = 'betwo.catkin-tools';
 
+export const VERSION = "1.1.0";
+
 export interface API {
     reload(): Promise<void>;
 
