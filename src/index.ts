@@ -159,6 +159,8 @@ export interface WorkspaceProvider {
     getDevelDir(): Promise<string>;
     getInstallDir(): Promise<string>;
 
+    getDefaultRosWorkspace(): Promise<string>;
+
     getCmakeArguments(): Promise<string>;
 
     checkProfile(): Promise<void>;
