@@ -80,11 +80,11 @@ export class TestRunReloadRequest {
 }
 export class TestRunResult {
     constructor(public success: boolean,
-        public repeat_ids?: string[],
+        public repeat_tests?: vscode.TestItem[],
         public reload_packages?: TestRunReloadRequest[]
     ) {
-        if (this.repeat_ids === undefined) {
-            this.repeat_ids = [];
+        if (this.repeat_tests === undefined) {
+            this.repeat_tests = [];
         }
         if (this.reload_packages === undefined) {
             this.reload_packages = [];
@@ -92,7 +92,7 @@ export class TestRunResult {
     }
 
     public merge(other: TestRunResult) {
-        this.repeat_ids = this.repeat_ids.concat(other.repeat_ids);
+        this.repeat_tests = this.repeat_tests.concat(other.repeat_tests);
         this.reload_packages = this.reload_packages.concat(other.reload_packages);
     }
 }
