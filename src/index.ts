@@ -170,8 +170,11 @@ export interface WorkspaceProvider {
     getBuildTestsTask(): Promise<vscode.Task>;
     getCleanTask(): Promise<vscode.Task>;
 
-    reload(): any;
-    enableCompileCommandsGeneration(): any;
+    reload(): Promise<void>;
+
+    isInitialized(): Promise<boolean>;
+    initialize(extending: fs.PathLike[]): Promise<boolean>;
+    enableCompileCommandsGeneration(): Promise<boolean>;
 
     getDefaultRunTestTarget(): string;
     makePackageBuildCommand(package_name: string): string;
