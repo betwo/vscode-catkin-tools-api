@@ -6,70 +6,6 @@ export const vscodeCatkinToolsExtensionId = 'betwo.catkin-tools';
 
 export const VERSION = "1.1.0";
 
-/**
- * Information about a test suite.
- */
-export interface TestSuiteInfo {
-    type: 'suite';
-    id: string;
-    /** The label to be displayed by the Test Explorer for this suite. */
-    label: string;
-    /** The description to be displayed next to the label. */
-    description?: string;
-    /** The tooltip text to be displayed by the Test Explorer when you hover over this suite. */
-    tooltip?: string;
-    /**
-     * The file containing this suite (if known).
-     * This can either be an absolute path (if it is a local file) or a URI.
-     * Note that this should never contain a `file://` URI.
-     */
-    file?: string;
-    /** The line within the specified file where the suite definition starts (if known). */
-    line?: number;
-    /** Set this to `false` if Test Explorer shouldn't offer debugging this suite. */
-    debuggable?: boolean;
-    children: (TestSuiteInfo | TestInfo)[];
-    /** Set this to `true` if there was an error while loading the suite */
-    errored?: boolean;
-    /**
-     * This message will be displayed by the Test Explorer when the user selects the suite.
-     * It is usually used for information about why the suite was set to errored.
-     */
-    message?: string;
-}
-/**
- * Information about a test.
- */
-export interface TestInfo {
-    type: 'test';
-    id: string;
-    /** The label to be displayed by the Test Explorer for this test. */
-    label: string;
-    /** The description to be displayed next to the label. */
-    description?: string;
-    /** The tooltip text to be displayed by the Test Explorer when you hover over this test. */
-    tooltip?: string;
-    /**
-     * The file containing this test (if known).
-     * This can either be an absolute path (if it is a local file) or a URI.
-     * Note that this should never contain a `file://` URI.
-     */
-    file?: string;
-    /** The line within the specified file where the test definition starts (if known). */
-    line?: number;
-    /** Indicates whether this test will be skipped during test runs */
-    skipped?: boolean;
-    /** Set this to `false` if Test Explorer shouldn't offer debugging this test. */
-    debuggable?: boolean;
-    /** Set this to `true` if there was an error while loading the test */
-    errored?: boolean;
-    /**
-     * This message will be displayed by the Test Explorer when the user selects the test.
-     * It is usually used for information about why the test was set to errored.
-     */
-    message?: string;
-}
-
 export interface API {
     reload(): Promise<void>;
 
@@ -104,9 +40,9 @@ export interface IWorkspace {
     loadPackage(package_xml: fs.PathLike): void;
     loadPackageTests(workspace_package: IPackage,
         outline_only: boolean,
-        build_dir?: String,
-        devel_dir?: String):
-        Promise<WorkspaceTestSuite>;
+        build_dir?: fs.PathLike,
+        devel_dir?: fs.PathLike):
+        Promise<void>;
     locatePackageXML(package_name: String): void;
     buildDependencyGraph(): void;
     iteratePossibleSourceFiles(
@@ -131,39 +67,50 @@ export interface IWorkspace {
     getSetupShell(): Promise<string>;
     makeCommand(payload: string): Promise<string>;
 
-    runTest(id: string): Promise<TestRunResult>;
+    runTest(id: string, test_run: vscode.TestRun): Promise<WorkspaceTestReport>;
 }
 
 export type TestType = "unknown" | "gtest" | "generic" | "suite";
 
-export class TestRunReloadRequest {
-    test: WorkspaceTestSuite;
-    dom?;
-    output?: string;
+export enum WorkspaceTestRunReportKind {
+    BuildFailed,
+    TestFailed,
+    TestSucceeded
 }
-export class TestRunResult {
-    constructor(public success: boolean,
-        public repeat_tests?: vscode.TestItem[],
-        public reload_packages?: TestRunReloadRequest[]
-    ) {
-        if (this.repeat_tests === undefined) {
-            this.repeat_tests = [];
-        }
-        if (this.reload_packages === undefined) {
-            this.reload_packages = [];
+export class WorkspaceTestRunReport {
+    public constructor(
+        public state: WorkspaceTestRunReportKind,
+        public message?: vscode.TestMessage,
+        public error?: Error) {
+        if (message === undefined) {
+            this.message = new vscode.TestMessage("");
         }
     }
 
-    public merge(other: TestRunResult) {
-        this.repeat_tests = this.repeat_tests.concat(other.repeat_tests);
-        this.reload_packages = this.reload_packages.concat(other.reload_packages);
+    public succeeded(): boolean {
+        return this.state === WorkspaceTestRunReportKind.TestSucceeded;
+    }
+}
+
+export class WorkspaceTestReport {
+    public entries = new Map<vscode.TestItem, WorkspaceTestRunReport>();
+    constructor(public success: boolean) {
+    }
+
+    public succeeded(): boolean {
+        for (const entry of this.entries) {
+            if (!entry[1].succeeded()) {
+                return false;
+            }
+        }
+        return true;
     }
 }
 
 export interface IPackage {
     package_xml_path: fs.PathLike;
     workspace: IWorkspace;
-    build_space?: fs.PathLike;
+    current_build_space?: fs.PathLike;
     name: string;
     dependencies: string[];
     dependees: string[];
@@ -175,20 +122,21 @@ export interface IPackage {
     absolute_path: fs.PathLike;
     cmakelists_path: string;
 
-    package_test_suite: WorkspaceTestSuite;
+    package_test_suite: WorkspaceTestInterface;
+
+    onTestSuiteModified: vscode.EventEmitter<void>;
 
     getName(): string;
     getAbsolutePath(): fs.PathLike;
     getRelativePath(): Promise<fs.PathLike>;
     getWorkspacePath(src_dir: string): Promise<string[]>;
     containsFile(file: vscode.Uri): boolean;
-    isBuilt(build_dir: string): boolean;
+    isBuilt(build_dir: fs.PathLike): boolean;
     iteratePossibleSourceFiles(
         header_file: vscode.Uri,
         async_filter: (uri: vscode.Uri) => Promise<boolean>)
         : Promise<boolean>;
-    loadTests(build_dir: String, devel_dir: String, outline_only: boolean): Promise<WorkspaceTestSuite>;
-
+    loadTests(build_dir: fs.PathLike, devel_dir: fs.PathLike, query_for_cases: boolean): Promise<WorkspaceTestInterface[]>;
 }
 
 export interface IWorkspaceManager {
@@ -201,6 +149,8 @@ export interface IWorkspaceManager {
     reloadAllWorkspaces(): void;
     selectWorkspace(): Promise<IWorkspace>;
     switchProfile(): void;
+    buildTestItem(test_item: vscode.TestItem): Promise<boolean>;
+    reloadTestItem(test_item: vscode.TestItem): Promise<boolean>;
 
     registerWorkspace(context: vscode.ExtensionContext,
         root: vscode.WorkspaceFolder,
@@ -241,190 +191,204 @@ export interface WorkspaceProvider {
     initialize(extending: fs.PathLike[]): Promise<boolean>;
     enableCompileCommandsGeneration(): Promise<boolean>;
 
-    getDefaultRunTestTarget(): string;
+    getDefaultRunTestTargetName(): string;
     makePackageBuildCommand(package_name: string): string;
     makeRosSourcecommand(): string;
 }
 
 export interface IBuildTarget {
     cmake_target: string;
+    label: string;
     exec_path: string;
     type: TestType;
 }
 
+export class WorkspaceTestIdentifierTemplate {
+    public constructor(
+        public prefix: string,
+        public fixture?: string,
+        public test?: string
+    ) { }
+
+    public evaluate(params: WorkspaceTestParameters): string {
+        let full_id = this.prefix;
+        if (this.fixture !== undefined) {
+            let fixture_str = this.fixture;
+            if (params?.fixture?.instance !== undefined) {
+                fixture_str = `${params?.fixture?.instance}/${fixture_str}`;
+            }
+            if (params?.fixture?.generator !== undefined) {
+                fixture_str = `${fixture_str}/${params?.fixture?.generator}`;
+            }
+            full_id = `${full_id}_${fixture_str}`;
+        }
+        if (this.test !== undefined) {
+            let test_str = this.test;
+            if (params?.generator !== undefined) {
+                test_str = `${test_str}/${params?.generator}`;
+            }
+            full_id = `${full_id}_${test_str}`;
+        }
+        return full_id;
+    }
+}
+
+
+export class WorkspaceTestParameters {
+    fixture?: WorkspaceFixtureParameters;
+    instance?: string;
+    generator?: string;
+    description?: string;
+}
+export class WorkspaceFixtureParameters {
+    instance?: string;
+    generator?: string;
+    description?: string;
+}
+
+export function isTemplateEqual(lhs: WorkspaceTestIdentifierTemplate, rhs: WorkspaceTestIdentifierTemplate): boolean {
+    if (lhs.prefix !== rhs.prefix) {
+        return false;
+    }
+
+    if (lhs.fixture === undefined) {
+        if (rhs.fixture !== undefined) {
+            return false;
+        }
+    } else {
+        if (lhs.fixture !== rhs.fixture) {
+            return false;
+        }
+    }
+
+    if (lhs.test === undefined) {
+        if (rhs.test !== undefined) {
+            return false;
+        }
+    } else {
+        if (lhs.test !== rhs.test) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+export function areFixtureParametersEqual(lhs: WorkspaceFixtureParameters, rhs: WorkspaceFixtureParameters): boolean {
+    if (lhs.instance === undefined) {
+        if (rhs.instance !== undefined) {
+            return false;
+        }
+    } else {
+        if (lhs.instance !== rhs.instance) {
+            return false;
+        }
+    }
+    if (lhs.generator === undefined) {
+        if (rhs.generator !== undefined) {
+            return false;
+        }
+    } else {
+        if (lhs.generator !== rhs.generator) {
+            return false;
+        }
+    }
+    return true;
+}
+
+
+export function areTestParametersEqual(lhs: WorkspaceTestParameters, rhs: WorkspaceTestParameters): boolean {
+    if (lhs.instance === undefined) {
+        if (rhs.instance !== undefined) {
+            return false;
+        }
+    } else {
+        if (lhs.instance !== rhs.instance) {
+            return false;
+        }
+    }
+    if (lhs.generator === undefined) {
+        if (rhs.generator !== undefined) {
+            return false;
+        }
+    } else {
+        if (lhs.generator !== rhs.generator) {
+            return false;
+        }
+    }
+    return areFixtureParametersEqual(lhs.fixture, rhs.fixture);
+}
 
 export class WorkspaceTestInterface {
-    public package: IPackage;
-
+    public id: WorkspaceTestIdentifierTemplate;
     public type: TestType;
-    public filter: String;
+    public children: (WorkspaceTestInterface)[];
+
+    public is_parameterized: boolean;
+    public instances?: WorkspaceTestParameters[];
+
     public executable?: fs.PathLike;
 
-    public build_space: fs.PathLike;
-    public build_target: String;
-    public global_build_dir: String;
-    public global_devel_dir: String;
+    public build_space?: fs.PathLike;
+    public build_target?: IBuildTarget;
 
-    public info: TestInfo | TestSuiteInfo;
+    public package?: IPackage;
+    public resolvable?: boolean;
+
+    public file?: string;
+    public line?: number;
+    public debuggable?: boolean;
 }
 
-export class WorkspaceTestCase extends WorkspaceTestInterface {
-    public info: TestInfo;
+export interface WorkspaceTestHandler {
+    test(): WorkspaceTestInterface;
+    instance(): WorkspaceTestInstance;
+    item(): vscode.TestItem;
+
+    enqueue(test_run: vscode.TestRun): Promise<void>;
+
+    compile(
+        test_run: vscode.TestRun,
+        token: vscode.CancellationToken,
+        diagnostics: vscode.DiagnosticCollection,
+        cwd: fs.PathLike
+    ): Promise<WorkspaceTestRunReport>;
+
+    run(test_run: vscode.TestRun,
+        token: vscode.CancellationToken,
+        diagnostics: vscode.DiagnosticCollection,
+        environment: [string, string][],
+        cwd: fs.PathLike
+    ): Promise<WorkspaceTestReport>;
+
+    debug(test_run: vscode.TestRun,
+        token: vscode.CancellationToken,
+        diagnostics: vscode.DiagnosticCollection,
+        environment: [string, string][],
+        cwd: fs.PathLike
+    ): Promise<void>;
+
+    skip(test_run: vscode.TestRun): Promise<void>;
+
+    enumerateTests(run_tests_individually: boolean, tests: WorkspaceTestInstance[]): void;
+    enumeratePackages(packages: IPackage[]): void;
+
+    addChild(child: WorkspaceTestHandler): void;
+    removeChild(child: WorkspaceTestHandler): void;
+
+    reload(): Promise<void>;
+    updateTestItem(): void;
+    loadTests(build_dir: fs.PathLike, devel_dir: fs.PathLike, query_for_cases: boolean): Promise<void>;
+    dispose(): void;
 }
-
-export class WorkspaceTestFixture extends WorkspaceTestInterface {
-    public cases: WorkspaceTestCase[];
-    public info: TestSuiteInfo;
-}
-export class WorkspaceTestExecutable extends WorkspaceTestInterface {
-    public fixtures: WorkspaceTestFixture[];
-    public info: TestSuiteInfo;
-}
-
-export class WorkspaceTestSuite extends WorkspaceTestInterface {
-    public executables: WorkspaceTestExecutable[];
-    public info: TestSuiteInfo | TestInfo;
-
-    public test_build_targets: IBuildTarget[];
-}
-
-
-export class TestFixture {
-    constructor(
-        public name: string,
-        public line: number,
-        public test_cases: TestCase[] = [],
-    ) { }
-
-    public getTestCase(name: string): TestCase {
-        for (const test_case of this.test_cases) {
-            if (test_case.name === name) {
-                return test_case;
-            }
-        }
-    }
-}
-
-export class TestCase {
-    constructor(
-        public name: string,
-        public line: number,
-    ) { }
-}
-
-export class TestSource {
-    constructor(
-        public package_relative_file_path: fs.PathLike,
-        public test_fixtures: TestFixture[] = [],
-    ) { }
-
-    public getFixture(name: string): TestFixture {
-        for (const test_fixture of this.test_fixtures) {
-            if (test_fixture.name === name) {
-                return test_fixture;
-            }
-        }
-    }
-
-    public getFixtures(): TestFixture[] {
-        return this.test_fixtures;
-    }
-
-    public getTestCase(fixture_name: string, test_case_name: string): [TestCase, TestFixture] {
-        for (const test_fixture of this.test_fixtures) {
-            if (test_fixture.name === fixture_name) {
-                return [test_fixture.getTestCase(test_case_name), test_fixture];
-            }
-        }
-
-        return [undefined, undefined];
-    }
-}
-
-export class TestSuite {
-    constructor(
-        public targets: TestBuildTarget[],
-    ) { }
-
-    public getBuildTarget(name: string): TestBuildTarget {
-        for (const gtest_build_target of this.targets) {
-            if (gtest_build_target.name === name) {
-                return gtest_build_target;
-            }
-        }
-
-    }
-
-    public getFixture(name: string): [TestFixture, TestSource, TestBuildTarget] {
-        for (const gtest_build_target of this.targets) {
-            const [fixture, test_source] = gtest_build_target.getFixture(name);
-            if (fixture) {
-                return [fixture, test_source, gtest_build_target];
-            }
-        }
-
-        return [undefined, undefined, undefined];
-    }
-
-    public getFixtures(): TestFixture[] {
-        let fixtures = [];
-        for (const gtest_build_target of this.targets) {
-            fixtures = fixtures.concat(gtest_build_target.getFixtures());
-        }
-        return fixtures;
-    }
-
-    public getTestCase(fixture_name: string, test_case_name: string): [TestCase, TestFixture, TestSource, TestBuildTarget] {
-        for (const gtest_build_target of this.targets) {
-            const [test_case, fixture, test_source] = gtest_build_target.getTestCase(fixture_name, test_case_name);
-            if (test_case) {
-                return [test_case, fixture, test_source, gtest_build_target];
-            }
-        }
-
-        return [undefined, undefined, undefined, undefined];
-    }
-}
-export class TestBuildTarget {
-    constructor(
-        public name: string,
-        public package_relative_file_path: fs.PathLike,
-        public line: number,
-        public test_sources: TestSource[] = [],
-    ) { }
-
-    public getFixture(name: string): [TestFixture, TestSource] {
-        for (const test_source of this.test_sources) {
-            const fixture = test_source.getFixture(name);
-            if (fixture) {
-                return [fixture, test_source];
-            }
-        }
-
-        return [undefined, undefined];
-    }
-
-    public getFixtures(): TestFixture[] {
-        let fixtures = [];
-        for (const test_source of this.test_sources) {
-            fixtures = fixtures.concat(test_source.getFixtures());
-        }
-        return fixtures;
-    }
-
-    public getTestCase(fixture_name: string, test_case_name: string): [TestCase, TestFixture, TestSource] {
-        for (const test_source of this.test_sources) {
-            const [test_case, fixture] = test_source.getTestCase(fixture_name, test_case_name);
-            if (test_case) {
-                return [test_case, fixture, test_source];
-            }
-        }
-
-        return [undefined, undefined, undefined];
-    }
+export class WorkspaceTestInstance {
+    public test: WorkspaceTestInterface;
+    public parameters: WorkspaceTestParameters;
+    public item: vscode.TestItem;
+    public handler?: WorkspaceTestHandler;
 }
 
 export interface ITestParser {
     matches(json_object: any): boolean;
-    analyzeSourceFile(source_file: fs.PathLike): Promise<TestFixture[]>;
+    analyzeSourceFile(suite_name: string, source_file: fs.PathLike): Promise<WorkspaceTestInterface[]>;
 }
