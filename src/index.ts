@@ -65,6 +65,7 @@ export interface IWorkspace {
 
     getName(): Promise<string>;
     getSetupShell(): Promise<string>;
+    getRuntimeEnvironment(): Promise<[string, string][]>;
     makeCommand(payload: string): Promise<string>;
 
     runTest(id: string, test_run: vscode.TestRun): Promise<WorkspaceTestReport>;
