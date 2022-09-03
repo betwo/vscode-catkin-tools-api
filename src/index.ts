@@ -104,7 +104,7 @@ export class WorkspaceTestReport {
                 return false;
             }
         }
-        return true;
+        return this.success;
     }
 }
 
