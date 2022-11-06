@@ -186,7 +186,7 @@ export interface WorkspaceProvider {
     getBuildTestsTask(): Promise<vscode.Task>;
     getCleanTask(): Promise<vscode.Task>;
 
-    reload(): Promise<void>;
+    reload(query_for_cases: boolean): Promise<void>;
 
     isInitialized(): Promise<boolean>;
     initialize(extending: fs.PathLike[]): Promise<boolean>;
@@ -377,7 +377,7 @@ export interface WorkspaceTestHandler {
     addChild(child: WorkspaceTestHandler): void;
     removeChild(child: WorkspaceTestHandler): void;
 
-    reload(): Promise<void>;
+    reload(query_for_cases: boolean): Promise<void>;
     updateTestItem(): void;
     loadTests(build_dir: fs.PathLike, devel_dir: fs.PathLike, query_for_cases: boolean): Promise<void>;
     dispose(): void;
